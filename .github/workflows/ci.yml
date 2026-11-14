@@ -1,0 +1,44 @@
+name: CI
+
+# The public pipeline: nonagenticai/ci-workflows, GitHub-hosted runners, no repository secrets.
+# It scans the tree (secret + private-infrastructure), runs `go mod verify`, `go vet` and the Go
+# test suite, then builds this repo's Dockerfile and publishes it to
+# ghcr.io/nonagenticai/go-test-executor from main.
+#
+# There is no deploy job. This service is retired from the estate's cluster; the repository is
+# published so its tests, image build and job contract stay readable and reproducible.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    if: ${{ !github.event.repository.private }}
+    uses: nonagenticai/ci-workflows/.github/workflows/go-service.yml@main
+    permissions:
+      contents: read
+      packages: write
+    with:
+      image_name: go-test-executor
+      # go.mod lives in src/; the Dockerfile is at the repository root.
+      working_directory: src
+      dockerfile: Dockerfile
+      build_smoke: |
+        set -euo pipefail
+        docker run -d --name smoke-go-executor -p 18091:8091 "$IMAGE_REF"
+        ok=0
+        for i in $(seq 1 30); do
+          if curl -sf http://127.0.0.1:18091/health >/dev/null 2>&1; then
+            echo "health ok (attempt $i)"; ok=1; break
+          fi
+          sleep 1
+        done
+        docker logs smoke-go-executor || true
+        docker rm -f smoke-go-executor || true
+        [ "$ok" -eq 1 ]

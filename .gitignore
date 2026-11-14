@@ -1,0 +1,14 @@
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+.DS_Store
+node_modules/
+__pycache__/
+logs/*.log
+01_recent_push_failure.txt
+
+# compiled go binary (go build output)
+/src/go_test_service

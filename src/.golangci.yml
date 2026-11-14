@@ -1,0 +1,23 @@
+# golangci-lint config (v2 schema) for go-test-executor.
+#
+# Opt-in marker for the shared go-service.yml archetype: its `go-checks` job runs
+# `golangci-lint run` only when this file is present (else it falls back to `go vet`).
+# A conservative, deterministic linter set — the correctness/dead-code/unused checks
+# the bespoke image-only CI never ran. SAST (gosec) + supply-chain (govulncheck) are
+# run as their own archetype steps, so they are NOT duplicated here.
+#
+# Requires golangci-lint built with Go >= the module's go directive (1.26.x): v1.x
+# (built with go1.24) hard-errors on a go1.26 module — the archetype pins v2.12.2.
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    - govet
+    - errcheck
+    - ineffassign
+    - staticcheck
+    - unused
