@@ -747,6 +747,67 @@ func TestGetTestWorkspace_Override(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// resolveWithinRoot helper (go/path-injection boundary)
+// ---------------------------------------------------------------------------
+
+func TestResolveWithinRoot(t *testing.T) {
+	base := t.TempDir()
+	root := filepath.Join(base, "workspace")
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		t.Fatalf("failed to resolve test root: %v", err)
+	}
+
+	tests := []struct {
+		name     string
+		rel      string
+		wantOK   bool
+		wantPath string
+	}{
+		{
+			name:     "plain file name",
+			rel:      "test.go",
+			wantOK:   true,
+			wantPath: filepath.Join(absRoot, "test.go"),
+		},
+		{
+			name:     "nested path inside the root",
+			rel:      "sub/test.go",
+			wantOK:   true,
+			wantPath: filepath.Join(absRoot, "sub", "test.go"),
+		},
+		{
+			name:   "../ escape",
+			rel:    "../escape.go",
+			wantOK: false,
+		},
+		{
+			name:   "traversal through a nested segment",
+			rel:    filepath.Join("sub", "..", "..", "escape.go"),
+			wantOK: false,
+		},
+		{
+			name:   "sibling directory sharing the root prefix",
+			rel:    filepath.Join("..", "workspace-evil", "evil.go"),
+			wantOK: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := resolveWithinRoot(root, tt.rel)
+			if ok != tt.wantOK {
+				t.Fatalf("resolveWithinRoot(%q, %q) ok = %v, want %v (path %q)",
+					root, tt.rel, ok, tt.wantOK, got)
+			}
+			if tt.wantOK && got != tt.wantPath {
+				t.Fatalf("resolveWithinRoot(%q, %q) = %q, want %q", root, tt.rel, got, tt.wantPath)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // runGoTest (unit-level, requires go binary)
 // ---------------------------------------------------------------------------
 

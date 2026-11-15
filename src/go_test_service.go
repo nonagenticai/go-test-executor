@@ -35,6 +35,23 @@ func getTestWorkspace() string {
 	return TestWorkspace
 }
 
+// resolveWithinRoot resolves rel beneath root and reports whether the cleaned
+// absolute result stays inside root. The comparison appends the path separator
+// before the prefix test, so a sibling directory sharing the root's name prefix
+// (for example "/app/test_workspace-evil") cannot pass. Callers must use the
+// returned, cleaned path for the file operation.
+func resolveWithinRoot(root, rel string) (string, bool) {
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return "", false
+	}
+	cleaned := filepath.Clean(filepath.Join(absRoot, rel))
+	if cleaned != absRoot && !strings.HasPrefix(cleaned, absRoot+string(os.PathSeparator)) {
+		return "", false
+	}
+	return cleaned, true
+}
+
 type TestRequest struct {
 	Code     string `json:"code"`
 	TestCode string `json:"test_code"`
@@ -523,15 +540,25 @@ func validateHandler(w http.ResponseWriter, r *http.Request) {
 	req.Filename = filepath.Base(req.Filename)
 
 	// Create temporary directory
-	tempPath := filepath.Join(getTestWorkspace(), validationID)
+	workspaceRoot := getTestWorkspace()
+	tempPath := filepath.Join(workspaceRoot, validationID)
 	if err := os.MkdirAll(tempPath, 0750); err != nil {
 		sendError(w, "Failed to create temp directory", http.StatusInternalServerError)
 		return
 	}
 	defer func() { _ = os.RemoveAll(tempPath) }()
 
-	// Write code to file
-	goFile := filepath.Join(tempPath, req.Filename)
+	// Write code to file. filepath.Base above already removes directory
+	// components, but CodeQL go/path-injection does not model that call as a
+	// sanitizer. Resolve the destination beneath the workspace root, require
+	// the cleaned result to sit under root + separator (the component boundary
+	// refuses a "<root>-evil" sibling), and use that resolved path for the
+	// write.
+	goFile, ok := resolveWithinRoot(workspaceRoot, filepath.Join(validationID, req.Filename))
+	if !ok {
+		sendError(w, "Invalid filename", http.StatusBadRequest)
+		return
+	}
 	if err := os.WriteFile(goFile, []byte(req.Code), 0600); err != nil {
 		sendError(w, "Failed to write file", http.StatusInternalServerError)
 		return
